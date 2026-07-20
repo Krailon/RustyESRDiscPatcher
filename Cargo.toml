@@ -2,5 +2,17 @@
 name = "esr-disc-patcher-rs"
 version = "0.1.0"
 edition = "2024"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+description = "Standalone ESR disc image patcher for PlayStation 2 homebrew"
+keywords = ["playstation-2", "ps2", "esr", "homebrew"]
+categories = ["command-line-utilities"]
+default-run = "esr-disc-patcher"
 
 [dependencies]
+sha2 = "0.11.0"
+thiserror = "2.0.19"
+
+[[bin]]
+name = "esr-disc-patcher"
+path = "src/main.rs"

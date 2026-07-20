@@ -1,0 +1,401 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  preflight:
+    name: Validate release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install stable Rust
+        run: >-
+          rustup toolchain install stable --profile minimal
+          --component clippy --component rustfmt
+      - name: Select stable Rust
+        run: rustup default stable
+      - name: Validate version and tag
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cargo_version="$({ cargo metadata --locked --no-deps --format-version 1; } |
+            jq -r '.packages[] | select(.name == "esr-disc-patcher-rs") | .version')"
+          if [[ -z "$cargo_version" || "$cargo_version" == "null" ]]; then
+            echo "Could not read the package version from Cargo metadata." >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            tag="$GITHUB_REF_NAME"
+            if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tags must use stable SemVer: vMAJOR.MINOR.PATCH." >&2
+              exit 1
+            fi
+
+            version="${tag#v}"
+            if [[ "$version" != "$cargo_version" ]]; then
+              echo "Tag $tag does not match Cargo package version $cargo_version." >&2
+              exit 1
+            fi
+
+            default_branch="${{ github.event.repository.default_branch }}"
+            git fetch --no-tags origin \
+              "+refs/heads/${default_branch}:refs/remotes/origin/${default_branch}"
+            if ! git merge-base --is-ancestor HEAD "origin/${default_branch}"; then
+              echo "Release tags must point to a commit on ${default_branch}." >&2
+              exit 1
+            fi
+            publish=true
+          else
+            version="$cargo_version"
+            tag="v${cargo_version}"
+            publish=false
+          fi
+
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Run tests
+        run: cargo test --locked --all-targets --all-features
+      - name: Check library documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --all-features --no-deps
+
+  build:
+    name: Build ${{ matrix.id }}
+    needs: preflight
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: windows-x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            executable: esr-disc-patcher.exe
+            extension: zip
+            macos_deployment_target: ""
+            macos_arch: ""
+          - id: linux-x86_64-musl
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            executable: esr-disc-patcher
+            extension: tar.gz
+            macos_deployment_target: ""
+            macos_arch: ""
+          - id: macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            executable: esr-disc-patcher
+            extension: tar.gz
+            macos_deployment_target: "10.12"
+            macos_arch: x86_64
+          - id: macos-aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+            executable: esr-disc-patcher
+            extension: tar.gz
+            macos_deployment_target: "11.0"
+            macos_arch: arm64
+    env:
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS: >-
+        -C target-feature=+crt-static
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_deployment_target }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Install stable Rust and target
+        shell: bash
+        run: >-
+          rustup toolchain install stable --profile minimal
+          --target "${{ matrix.target }}"
+      - name: Select stable Rust
+        shell: bash
+        run: rustup default stable
+      - name: Run native tests
+        run: cargo test --locked --all-targets --all-features
+      - name: Build release executable
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Smoke-test executable on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = "target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          & $binary --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $binary --help | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke-test executable on Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          "$binary" --version
+          "$binary" --help >/dev/null
+      - name: Verify Windows architecture and runtime dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $binary = "target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          $bytes = [System.IO.File]::ReadAllBytes($binary)
+          if ($bytes.Length -lt 64) { throw "Release executable is not a valid PE file." }
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          if ($peOffset -lt 0 -or $peOffset + 6 -gt $bytes.Length) {
+            throw "Release executable has an invalid PE header offset."
+          }
+          $signature = [Text.Encoding]::ASCII.GetString($bytes, $peOffset, 4)
+          if ($signature -ne "PE`0`0") { throw "Release executable has no PE signature." }
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne 0x8664) {
+            throw ("Expected x86_64 PE machine 0x8664, found 0x{0:x4}." -f $machine)
+          }
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = (& $vswhere -latest -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath).Trim()
+          if (-not $installation) { throw "Could not locate the MSVC tools." }
+          $toolsVersion = (Get-Content `
+            "$installation\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt").Trim()
+          $dumpbin = "$installation\VC\Tools\MSVC\$toolsVersion\bin\Hostx64\x64\dumpbin.exe"
+          $dependencies = (& $dumpbin /dependents $binary | Out-String)
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin could not inspect the executable." }
+          $redistributable = '(?im)^\s+(?:vcruntime\d*|msvcp\d*|ucrtbase|api-ms-win-crt-[^\s]+)\.dll\s*$'
+          if ($dependencies -match $redistributable) {
+            throw "Release executable depends on a separately installed C runtime."
+          }
+      - name: Verify static Linux executable
+        if: matrix.id == 'linux-x86_64-musl'
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          file "$binary" > linux-file.txt
+          grep -q 'x86-64' linux-file.txt
+          readelf -l "$binary" > linux-program-headers.txt
+          if grep -q 'INTERP' linux-program-headers.txt; then
+            echo "Linux release has a dynamic interpreter." >&2
+            exit 1
+          fi
+          readelf -d "$binary" > linux-dynamic-section.txt 2>/dev/null || true
+          if grep -q 'NEEDED' linux-dynamic-section.txt; then
+            echo "Linux release has a dynamic library dependency." >&2
+            exit 1
+          fi
+      - name: Verify macOS architecture and runtime dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="target/${{ matrix.target }}/release/${{ matrix.executable }}"
+          actual_arch="$(lipo -archs "$binary")"
+          if [[ "$actual_arch" != "${{ matrix.macos_arch }}" ]]; then
+            echo "Expected architecture ${{ matrix.macos_arch }}, found $actual_arch." >&2
+            exit 1
+          fi
+          xcrun vtool -show-build "$binary" > macos-build-version.txt
+          grep -Eq \
+            'minos[[:space:]]+${{ matrix.macos_deployment_target }}([.]0)?([[:space:]]|$)' \
+            macos-build-version.txt
+          while IFS= read -r dependency; do
+            case "$dependency" in
+              /usr/lib/*|/System/Library/*) ;;
+              *)
+                echo "Non-system macOS dependency: $dependency" >&2
+                exit 1
+                ;;
+            esac
+          done < <(otool -L "$binary" | tail -n +2 | awk '{print $1}')
+      - name: Package Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = "esr-disc-patcher-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}"
+          $root = Join-Path dist $package
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable }}" $root
+          Copy-Item LICENSE $root
+          Copy-Item THIRD_PARTY_NOTICES.md $root
+          Copy-Item RELEASE_README.md (Join-Path $root README.md)
+          Compress-Archive -Path $root -DestinationPath "dist/$package.zip" `
+            -CompressionLevel Optimal
+          Remove-Item -Recurse -Force $root
+      - name: Package Unix release
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="esr-disc-patcher-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}"
+          root="dist/$package"
+          mkdir -p "$root"
+          install -m 0755 \
+            "target/${{ matrix.target }}/release/${{ matrix.executable }}" \
+            "$root/esr-disc-patcher"
+          install -m 0644 LICENSE "$root/LICENSE"
+          install -m 0644 THIRD_PARTY_NOTICES.md "$root/THIRD_PARTY_NOTICES.md"
+          install -m 0644 RELEASE_README.md "$root/README.md"
+          tar -czf "dist/$package.tar.gz" -C dist "$package"
+          rm -rf "$root"
+      - name: Upload packaged executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.id }}
+          path: >-
+            dist/esr-disc-patcher-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}.${{ matrix.extension }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  assemble:
+    name: Verify release bundle
+    needs:
+      - preflight
+      - build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Download executable archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      - name: Create source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_root="esr-disc-patcher-${{ needs.preflight.outputs.tag }}"
+          git archive --format=tar --prefix="${source_root}/" HEAD |
+            gzip -n > "dist/${source_root}-source.tar.gz"
+      - name: Verify archive contents and create checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.preflight.outputs.tag }}"
+          verify_root="$(mktemp -d)"
+          trap 'rm -rf "$verify_root"' EXIT
+
+          verify_binary_archive() {
+            local id="$1"
+            local extension="$2"
+            local executable="$3"
+            local package="esr-disc-patcher-${tag}-${id}"
+            local archive="dist/${package}.${extension}"
+            local destination="${verify_root}/${id}"
+            mkdir -p "$destination"
+
+            if [[ "$extension" == "zip" ]]; then
+              unzip -q "$archive" -d "$destination"
+            else
+              tar -xzf "$archive" -C "$destination"
+            fi
+
+            local root="${destination}/${package}"
+            test -f "${root}/${executable}"
+            test -f "${root}/LICENSE"
+            test -f "${root}/THIRD_PARTY_NOTICES.md"
+            test -f "${root}/README.md"
+            test "$(find "$root" -mindepth 1 | wc -l)" -eq 4
+            if [[ "$extension" != "zip" ]]; then
+              test -x "${root}/${executable}"
+            fi
+          }
+
+          verify_binary_archive windows-x86_64 zip esr-disc-patcher.exe
+          verify_binary_archive linux-x86_64-musl tar.gz esr-disc-patcher
+          verify_binary_archive macos-x86_64 tar.gz esr-disc-patcher
+          verify_binary_archive macos-aarch64 tar.gz esr-disc-patcher
+
+          source_archive="dist/esr-disc-patcher-${tag}-source.tar.gz"
+          source_root="esr-disc-patcher-${tag}"
+          tar -tzf "$source_archive" > "${verify_root}/source-contents.txt"
+          for required in Cargo.lock LICENSE THIRD_PARTY_NOTICES.md \
+            assets/dvd_video_data.bin src/main.rs; do
+            grep -Fxq "${source_root}/${required}" \
+              "${verify_root}/source-contents.txt"
+          done
+
+          cd dist
+          mapfile -t assets < <(
+            find . -maxdepth 1 -type f \
+              \( -name '*.zip' -o -name '*.tar.gz' \) \
+              -printf '%f\n' | LC_ALL=C sort
+          )
+          if [[ "${#assets[@]}" -ne 5 ]]; then
+            echo "Expected five release archives, found ${#assets[@]}." >&2
+            exit 1
+          fi
+          sha256sum "${assets[@]}" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-bundle-${{ needs.preflight.outputs.tag }}
+          path: dist/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  publish:
+    name: Publish GitHub release
+    needs:
+      - preflight
+      - assemble
+    if: needs.preflight.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: release-bundle-${{ needs.preflight.outputs.tag }}
+          path: dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --generate-notes \
+            --title "ESR Disc Patcher $TAG"

@@ -17,7 +17,7 @@ copyrighted game data.
 
 ## Current State
 
-Milestones 1 through 3 are complete. The repository contains a Rust 2024
+Milestones 1 through 4 are complete. The repository contains a Rust 2024
 application with:
 
 - Package: `esr-disc-patcher-rs`
@@ -30,12 +30,15 @@ application with:
 - An embedded, integrity-checked 24 KiB DVD-Video metadata payload
 - A functional three-command CLI with safe temporary-copy publication
 - Interactive byte progress, no-clobber output, and cross-platform alias checks
+- Tag-validated standalone release builds for Windows, Linux, and both macOS
+  architectures
+- Verified binary archives, an explicit source archive, and SHA-256 checksums
 - Direct dependencies: `clap` 4.6, `indicatif` 0.18, `same-file` 1.0, `sha2`
   0.11, `tempfile` 3.27, and `thiserror` 2.0
 
 Keep the project as one Cargo package with both a library and a binary until a
-real need for a workspace appears. Milestone 4, standalone release builds and
-archives, is next.
+real need for a workspace appears. Milestone 5, a desktop GUI that reuses the
+existing engine and safe output workflow, is next.
 
 ## Reference And Licensing
 
@@ -301,7 +304,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features --no-deps
   cleanup behavior.
 - Complete end-to-end and failure-path tests on all target operating systems.
 
-### Milestone 4: Standalone Releases
+### Milestone 4: Standalone Releases (Complete)
 
 - Build an x86_64 Windows executable, a statically linked x86_64 Linux musl
   executable, and x86_64 plus ARM64 macOS executables.

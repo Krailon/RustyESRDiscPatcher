@@ -7,10 +7,10 @@ application runtime, package manager, or separate payload download.
 
 ## Project Status
 
-The command-line application and reusable Rust patch engine are implemented and
-tested. The tool performs strict UDF validation, complete patch-state
-inspection, failure-safe output copying, patching, and byte-exact unpatching.
-Standalone release archives are the next milestone.
+The command-line application, reusable Rust patch engine, and standalone
+release automation are implemented and tested. The tool performs strict UDF
+validation, complete patch-state inspection, failure-safe output copying,
+patching, and byte-exact unpatching.
 
 ## Usage
 
@@ -29,6 +29,18 @@ never overwritten.
 
 Patch and unpatch show an interactive byte progress bar on stderr. Use
 `--quiet` to suppress progress and success messages; errors are always shown.
+
+## Releases
+
+Stable tags matching the version in `Cargo.toml` publish standalone archives
+for x86_64 Windows, statically linked x86_64 Linux, Intel macOS, and Apple
+Silicon macOS. Each archive contains the executable, license, third-party
+notices, and a concise usage guide. Releases also include a source archive and
+`SHA256SUMS` covering every attached project archive.
+
+Windows releases support Windows 10 or later. Intel macOS releases target macOS
+10.12 or later, and Apple Silicon releases target macOS 11.0 or later. Windows
+and macOS binaries are currently unsigned, and macOS binaries are not notarized.
 
 ## Goals
 
@@ -77,7 +89,7 @@ provides the failure-safe filesystem workflow.
 1. Project foundation, licensing, provenance, crate structure, and CI.
 2. Checked UDF inspection and the reusable patch engine. (Complete)
 3. Command-line interface and failure-safe output workflow. (Complete)
-4. Standalone release archives for supported platforms.
+4. Standalone release archives for supported platforms. (Complete)
 5. A desktop GUI using the same patch engine.
 
 ## Legal And Attribution

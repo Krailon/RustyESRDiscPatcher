@@ -101,15 +101,36 @@ built, or run by this repository.
 
 The following direct dependencies are compiled into the program:
 
+- `clap` 4.6.3, MIT OR Apache-2.0
+- `indicatif` 0.18.6, MIT
+- `same-file` 1.0.6, MIT or the Unlicense
 - `sha2` 0.11.0, MIT OR Apache-2.0
+- `tempfile` 3.27.0, MIT OR Apache-2.0
 - `thiserror` 2.0.19, MIT OR Apache-2.0
 
-Their dependency graph is pinned in `Cargo.lock`. It currently includes
-`block-buffer`, `cfg-if`, `const-oid`, `cpufeatures`, `crypto-common`, `digest`,
-`hybrid-array`, `libc`, `proc-macro2`, `quote`, `syn`, `thiserror-impl`, and
-`typenum`, each under MIT OR Apache-2.0, plus `unicode-ident` under
-`(MIT OR Apache-2.0) AND Unicode-3.0`. Source and complete license texts are
-available through each package's entry at <https://crates.io/>.
+Their complete native and target-specific dependency graph is pinned in
+`Cargo.lock`. The graph uses these additional license groups:
+
+- MIT OR Apache-2.0: `anstream`, `anstyle`, `anstyle-parse`, `anstyle-query`,
+  `anstyle-wincon`, `bitflags`, `block-buffer`, `bumpalo`, `cfg-if`,
+  `clap_builder`, `clap_derive`, `clap_lex`, `colorchoice`, `const-oid`,
+  `cpufeatures`, `crypto-common`, `digest`, `encode_unicode`, `errno`,
+  `fastrand`, `futures-core`, `futures-task`, `futures-util`, `getrandom`,
+  `heck`, `hybrid-array`, `is_terminal_polyfill`, `js-sys`, `libc`, `once_cell`,
+  `once_cell_polyfill`, `pin-project-lite`, `portable-atomic`, `proc-macro2`,
+  `quote`, `rustversion`, `syn`, `thiserror-impl`, `typenum`, `unicode-width`,
+  `utf8parse`, `wasm-bindgen`, `wasm-bindgen-macro`,
+  `wasm-bindgen-macro-support`, `wasm-bindgen-shared`, `web-time`,
+  `windows-link`, and `windows-sys`
+- MIT: `console`, `slab`, `strsim`, and `unit-prefix`
+- MIT or the Unlicense: `winapi-util`
+- Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT: `linux-raw-sys` and
+  `rustix`
+- MIT OR Apache-2.0 OR LGPL-2.1-or-later: `r-efi`
+- `(MIT OR Apache-2.0) AND Unicode-3.0`: `unicode-ident`
+
+Source and complete license texts are available through each package's entry at
+<https://crates.io/>.
 
 ## No Sony Or Game Content
 

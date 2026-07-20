@@ -7,19 +7,28 @@ application runtime, package manager, or separate payload download.
 
 ## Project Status
 
-This project is in early development. The reusable Rust patch engine is
-implemented and tested, including strict UDF validation, complete patch-state
-inspection, patching, and byte-exact unpatching. The command-line and safe file
-copy workflow are the next milestone, so the binary still exits with a clear
-development-status error.
+The command-line application and reusable Rust patch engine are implemented and
+tested. The tool performs strict UDF validation, complete patch-state
+inspection, failure-safe output copying, patching, and byte-exact unpatching.
+Standalone release archives are the next milestone.
 
-The first usable command-line release will provide these commands:
+## Usage
+
+The command-line interface provides these commands:
 
 ```text
 esr-disc-patcher inspect INPUT
 esr-disc-patcher patch INPUT [-o OUTPUT] [--quiet]
 esr-disc-patcher unpatch INPUT [-o OUTPUT] [--quiet]
 ```
+
+`inspect` prints exactly `patched`, `unpatched`, or `inconsistent`. Patch and
+unpatch default to `<stem>_patched.<ext>` and `<stem>_unpatched.<ext>` in the
+input directory. Inputs without an extension use `.iso`. Existing outputs are
+never overwritten.
+
+Patch and unpatch show an interactive byte progress bar on stderr. Use
+`--quiet` to suppress progress and success messages; errors are always shown.
 
 ## Goals
 
@@ -35,10 +44,11 @@ containers are outside the first release's scope.
 
 ## Data Safety
 
-The planned patching workflow treats the source image as read-only. It creates a
+The patching workflow treats the source image as read-only. It creates a
 temporary copy in the destination directory, modifies and verifies that copy,
-then publishes it without overwriting an existing path. Unsupported, truncated,
-or inconsistent images will be rejected before patching.
+synchronizes it, then publishes it without overwriting an existing path. Direct
+paths, symbolic links, and hard links that alias the input are rejected.
+Unsupported, truncated, or inconsistent images are rejected before copying.
 
 Keep an independently verified archival image even when using tools designed to
 be reversible. No software can protect against every storage, hardware, or
@@ -54,18 +64,19 @@ cargo build --locked
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets --all-features -- -D warnings
 cargo test --locked --all-targets --all-features
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --all-features --no-deps
 ```
 
 The project guide and implementation roadmap are in [AGENTS.md](AGENTS.md).
-The library API currently exposes `inspect`, `patch`, and `unpatch` for seekable
-streams. Mutation functions must receive a disposable writable copy; they do
-not provide the filesystem safety workflow planned for the CLI.
+The library API exposes `inspect`, `patch`, and `unpatch` for seekable streams.
+Library mutation functions still require a disposable writable copy; the CLI
+provides the failure-safe filesystem workflow.
 
 ## Roadmap
 
 1. Project foundation, licensing, provenance, crate structure, and CI.
 2. Checked UDF inspection and the reusable patch engine. (Complete)
-3. Command-line interface and failure-safe output workflow.
+3. Command-line interface and failure-safe output workflow. (Complete)
 4. Standalone release archives for supported platforms.
 5. A desktop GUI using the same patch engine.
 

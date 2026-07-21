@@ -291,10 +291,22 @@ fn publish(temporary: NamedTempFile, output: &Path) -> Result<(), CliError> {
                 path: output.to_owned(),
             })
         }
-        Err(error) => Err(CliError::PublishOutput {
-            path: output.to_owned(),
-            source: error.error,
-        }),
+        // Windows may report a no-clobber destination collision as a different error kind.
+        Err(error) => match fs::symlink_metadata(output) {
+            Ok(_) => Err(CliError::OutputExists {
+                path: output.to_owned(),
+            }),
+            Err(source) if source.kind() == io::ErrorKind::NotFound => {
+                Err(CliError::PublishOutput {
+                    path: output.to_owned(),
+                    source: error.error,
+                })
+            }
+            Err(source) => Err(CliError::InspectOutput {
+                path: output.to_owned(),
+                source,
+            }),
+        },
     }
 }
 

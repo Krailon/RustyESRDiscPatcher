@@ -118,7 +118,7 @@ jobs:
             target: x86_64-apple-darwin
             executable: esr-disc-patcher
             extension: tar.gz
-            macos_deployment_target: "10.12"
+            macos_deployment_target: "10.13"
             macos_arch: x86_64
           - id: macos-aarch64
             runner: macos-15
@@ -225,9 +225,18 @@ jobs:
             exit 1
           fi
           xcrun vtool -show-build "$binary" > macos-build-version.txt
-          grep -Eq \
-            'minos[[:space:]]+${{ matrix.macos_deployment_target }}([.]0)?([[:space:]]|$)' \
-            macos-build-version.txt
+          cat macos-build-version.txt
+          expected_minos="${{ matrix.macos_deployment_target }}"
+          actual_minos="$(awk '$1 == "minos" { print $2; exit }' macos-build-version.txt)"
+          if [[ -z "$actual_minos" ]]; then
+            echo "Could not read the minimum macOS version from vtool output." >&2
+            exit 1
+          fi
+          if [[ "$actual_minos" != "$expected_minos" && \
+                "$actual_minos" != "${expected_minos}.0" ]]; then
+            echo "Expected minimum macOS $expected_minos, found $actual_minos." >&2
+            exit 1
+          fi
           while IFS= read -r dependency; do
             case "$dependency" in
               /usr/lib/*|/System/Library/*) ;;

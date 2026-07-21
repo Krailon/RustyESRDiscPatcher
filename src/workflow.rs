@@ -365,7 +365,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let output = directory.path().join("output.iso");
         let mut input = FailingReader;
-        let permissions = directory.path().metadata().unwrap().permissions();
+        let permissions = test_file_permissions();
 
         assert!(matches!(
             write_output(
@@ -387,7 +387,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let output = directory.path().join("output.iso");
         let mut input = Cursor::new(vec![1_u8; 8]);
-        let permissions = directory.path().metadata().unwrap().permissions();
+        let permissions = test_file_permissions();
 
         assert!(matches!(
             write_output(
@@ -409,7 +409,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let output = directory.path().join("output.iso");
         let mut input = Cursor::new(vec![1_u8; 8]);
-        let permissions = directory.path().metadata().unwrap().permissions();
+        let permissions = test_file_permissions();
 
         let result = write_output(
             &mut input,
@@ -436,7 +436,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let output = directory.path().join("output.iso");
         let mut input = Cursor::new(vec![1_u8; 7]);
-        let permissions = directory.path().metadata().unwrap().permissions();
+        let permissions = test_file_permissions();
 
         assert!(matches!(
             write_output(
@@ -459,6 +459,14 @@ mod tests {
     fn assert_no_output_or_temporary(directory: &Path, output: &Path) {
         assert!(!output.exists());
         assert_no_temporary(directory);
+    }
+
+    fn test_file_permissions() -> Permissions {
+        tempfile::tempfile()
+            .unwrap()
+            .metadata()
+            .unwrap()
+            .permissions()
     }
 
     fn assert_no_temporary(directory: &Path) {

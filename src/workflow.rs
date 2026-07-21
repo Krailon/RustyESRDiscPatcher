@@ -411,21 +411,22 @@ mod tests {
         let mut input = Cursor::new(vec![1_u8; 8]);
         let permissions = directory.path().metadata().unwrap().permissions();
 
-        assert!(matches!(
-            write_output(
-                &mut input,
-                8,
-                permissions,
-                &output,
-                true,
-                Operation::Patch,
-                |_| {
-                    fs::write(&output, b"existing").unwrap();
-                    Ok(())
-                },
-            ),
-            Err(CliError::OutputExists { .. })
-        ));
+        let result = write_output(
+            &mut input,
+            8,
+            permissions,
+            &output,
+            true,
+            Operation::Patch,
+            |_| {
+                fs::write(&output, b"existing").unwrap();
+                Ok(())
+            },
+        );
+        assert!(
+            matches!(result, Err(CliError::OutputExists { .. })),
+            "unexpected publication result: {result:?}"
+        );
         assert_eq!(fs::read(&output).unwrap(), b"existing");
         assert_no_temporary(directory.path());
     }

@@ -75,6 +75,38 @@ fn accepts_zero_length_descriptor_crc_when_stored_crc_is_zero() {
 }
 
 #[test]
+fn accepts_full_sector_descriptor_crc_and_round_trips_both_revisions() {
+    for revision in [UdfRevision::Nsr02, UdfRevision::Nsr03] {
+        let original = fixture(revision, 2_032);
+        let mut image = Cursor::new(original.clone());
+
+        assert_eq!(inspect(&mut image).unwrap().state, PatchState::Unpatched);
+        patch(&mut image).unwrap();
+        assert_eq!(inspect(&mut image).unwrap().state, PatchState::Patched);
+        unpatch(&mut image).unwrap();
+        assert_eq!(inspect(&mut image).unwrap().state, PatchState::Unpatched);
+        assert_eq!(image.into_inner(), original);
+    }
+}
+
+#[test]
+fn accepts_protected_partition_contents_identifier_and_round_trips() {
+    let mut original = fixture(UdfRevision::Nsr02, 2_032);
+    for sector_number in [FIRST_DESCRIPTOR_SECTOR, SECOND_DESCRIPTOR_SECTOR] {
+        let descriptor = sector_mut(&mut original, sector_number);
+        descriptor[24] = 0x02;
+        udf::refresh_descriptor_tag(descriptor);
+    }
+    let mut image = Cursor::new(original.clone());
+
+    assert_eq!(inspect(&mut image).unwrap().state, PatchState::Unpatched);
+    patch(&mut image).unwrap();
+    assert_eq!(inspect(&mut image).unwrap().state, PatchState::Patched);
+    unpatch(&mut image).unwrap();
+    assert_eq!(image.into_inner(), original);
+}
+
+#[test]
 fn rejects_invalid_image_sizes_without_writing() {
     let mut unaligned = Cursor::new(vec![0_u8; FIXTURE_SECTORS * SECTOR_BYTES - 1]);
     assert!(matches!(
@@ -130,9 +162,47 @@ fn rejects_bad_descriptor_checksum_crc_and_crc_length() {
 
     let mut bad_length = original;
     let descriptor = sector_mut(&mut bad_length, FIRST_DESCRIPTOR_SECTOR);
-    descriptor[10..12].copy_from_slice(&497_u16.to_le_bytes());
+    descriptor[10..12].copy_from_slice(&2_033_u16.to_le_bytes());
     descriptor[4] = udf::tag_checksum(descriptor);
     assert_invalid_descriptor(bad_length);
+}
+
+#[test]
+fn rejects_dirty_and_reserved_partition_contents_identifier_flags() {
+    for flags in [0x01, 0x04] {
+        let mut bytes = fixture(UdfRevision::Nsr02, 2_032);
+        let descriptor = sector_mut(&mut bytes, FIRST_DESCRIPTOR_SECTOR);
+        descriptor[24] = flags;
+        udf::refresh_descriptor_tag(descriptor);
+        assert_invalid_descriptor(bytes);
+    }
+}
+
+#[test]
+fn extended_crc_and_descriptor_padding_are_validated_independently() {
+    let mut bad_crc = fixture(UdfRevision::Nsr02, 2_032);
+    sector_mut(&mut bad_crc, FIRST_DESCRIPTOR_SECTOR)[SECTOR_BYTES - 1] = 1;
+    let mut image = Cursor::new(bad_crc);
+    assert!(matches!(
+        inspect(&mut image),
+        Err(Error::InvalidDescriptor {
+            reason: "descriptor CRC is incorrect",
+            ..
+        })
+    ));
+
+    let mut bad_padding = fixture(UdfRevision::Nsr02, 2_032);
+    let descriptor = sector_mut(&mut bad_padding, FIRST_DESCRIPTOR_SECTOR);
+    descriptor[SECTOR_BYTES - 1] = 1;
+    udf::refresh_descriptor_tag(descriptor);
+    let mut image = Cursor::new(bad_padding);
+    assert!(matches!(
+        inspect(&mut image),
+        Err(Error::InvalidDescriptor {
+            reason: "logical-sector padding after the descriptor is not zero",
+            ..
+        })
+    ));
 }
 
 #[test]

@@ -10,6 +10,8 @@ const PARTITION_LENGTH_OFFSET: usize = 0xC0;
 const DESCRIPTOR_TAG_LENGTH: usize = 16;
 const PARTITION_DESCRIPTOR_BODY_LENGTH: usize = 496;
 const PARTITION_DESCRIPTOR_LENGTH: usize = DESCRIPTOR_TAG_LENGTH + PARTITION_DESCRIPTOR_BODY_LENGTH;
+const MAX_DESCRIPTOR_CRC_LENGTH: usize = SECTOR_BYTES - DESCRIPTOR_TAG_LENGTH;
+const ENTITY_IDENTIFIER_PROTECTED: u8 = 0x02;
 const PARTITION_DESCRIPTOR_TAG_ID: u16 = 5;
 const VRS_FIRST_SECTOR: u64 = 16;
 const VRS_END_SECTOR_EXCLUSIVE: u64 = 80;
@@ -126,8 +128,8 @@ pub(crate) fn parse_partition_descriptor(
     }
 
     let crc_length = usize::from(read_u16(descriptor, 10));
-    if crc_length > PARTITION_DESCRIPTOR_BODY_LENGTH {
-        return Err(invalid("descriptor CRC length exceeds 496 bytes"));
+    if crc_length > MAX_DESCRIPTOR_CRC_LENGTH {
+        return Err(invalid("descriptor CRC length exceeds the logical sector"));
     }
     let stored_crc = read_u16(descriptor, 8);
     let computed_crc = descriptor_crc(&descriptor[DESCRIPTOR_TAG_LENGTH..][..crc_length]);
@@ -138,8 +140,10 @@ pub(crate) fn parse_partition_descriptor(
     if read_u16(descriptor, 20) != 1 {
         return Err(invalid("partition flags are not the allocated value"));
     }
-    if descriptor[24] != 0 {
-        return Err(invalid("partition contents identifier flags are not zero"));
+    if descriptor[24] & !ENTITY_IDENTIFIER_PROTECTED != 0 {
+        return Err(invalid(
+            "partition contents identifier is dirty or has reserved flags",
+        ));
     }
     let expected_identifier = match revision {
         UdfRevision::Nsr02 => b"+NSR02",

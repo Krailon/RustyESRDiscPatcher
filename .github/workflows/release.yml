@@ -227,9 +227,21 @@ jobs:
           xcrun vtool -show-build "$binary" > macos-build-version.txt
           cat macos-build-version.txt
           expected_minos="${{ matrix.macos_deployment_target }}"
-          actual_minos="$(awk '$1 == "minos" { print $2; exit }' macos-build-version.txt)"
+          actual_minos="$(
+            awk '
+              $1 == "cmd" { load_command = $2; next }
+              load_command == "LC_BUILD_VERSION" && $1 == "minos" {
+                print $2
+                exit
+              }
+              load_command == "LC_VERSION_MIN_MACOSX" && $1 == "version" {
+                print $2
+                exit
+              }
+            ' macos-build-version.txt
+          )"
           if [[ -z "$actual_minos" ]]; then
-            echo "Could not read the minimum macOS version from vtool output." >&2
+            echo "Could not read the minimum macOS version from a supported load command." >&2
             exit 1
           fi
           if [[ "$actual_minos" != "$expected_minos" && \

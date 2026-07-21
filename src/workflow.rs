@@ -72,10 +72,20 @@ impl Operation {
 }
 
 pub(crate) fn open_regular_input(path: &Path) -> Result<File, CliError> {
-    let file = File::open(path).map_err(|source| CliError::OpenInput {
-        path: path.to_owned(),
-        source,
-    })?;
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(source) => {
+            if fs::metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
+                return Err(CliError::InputNotRegular {
+                    path: path.to_owned(),
+                });
+            }
+            return Err(CliError::OpenInput {
+                path: path.to_owned(),
+                source,
+            });
+        }
+    };
     let metadata = file.metadata().map_err(|source| CliError::InputMetadata {
         path: path.to_owned(),
         source,

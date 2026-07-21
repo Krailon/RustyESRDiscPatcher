@@ -1,1 +1,3 @@
 /target
+*.[iI][sS][oO]
+.esr-disc-patcher-*.tmp

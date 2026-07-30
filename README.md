@@ -39,7 +39,7 @@ notices, and a concise usage guide. Releases also include a source archive and
 `SHA256SUMS` covering every attached project archive.
 
 Windows releases support Windows 10 or later. Intel macOS releases target macOS
-10.12 or later, and Apple Silicon releases target macOS 11.0 or later. Windows
+10.13 or later, and Apple Silicon releases target macOS 11.0 or later. Windows
 and macOS binaries are currently unsigned, and macOS binaries are not notarized.
 
 ## Goals

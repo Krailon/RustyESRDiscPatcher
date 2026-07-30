@@ -29,13 +29,13 @@ sha256sum --ignore-missing --check SHA256SUMS
 On macOS, compare the result for the downloaded archive with `SHA256SUMS`:
 
 ```sh
-shasum -a 256 esr-disc-patcher-*.tar.gz
+shasum -a 256 rusty-esr-disc-patcher-*.tar.gz
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Get-FileHash .\esr-disc-patcher-*.zip -Algorithm SHA256
+Get-FileHash .\rusty-esr-disc-patcher-*.zip -Algorithm SHA256
 ```
 
 The Windows and macOS executables are currently unsigned, and the macOS

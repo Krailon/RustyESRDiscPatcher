@@ -33,6 +33,8 @@ application with:
 - Tag-validated standalone release builds for Windows, Linux, and both macOS
   architectures
 - Verified binary archives, an explicit source archive, and SHA-256 checksums
+- Release archives named `rusty-esr-disc-patcher-v<version>-<target>`, while the
+  executable remains `esr-disc-patcher`
 - Direct dependencies: `clap` 4.6, `indicatif` 0.18, `same-file` 1.0, `sha2`
   0.11, `tempfile` 3.27, and `thiserror` 2.0
 

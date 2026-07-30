@@ -15,6 +15,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  RELEASE_BASENAME: rusty-esr-disc-patcher
 
 jobs:
   preflight:
@@ -262,7 +263,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $package = "esr-disc-patcher-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}"
+          $package = "${env:RELEASE_BASENAME}-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}"
           $root = Join-Path dist $package
           New-Item -ItemType Directory -Force -Path $root | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.executable }}" $root
@@ -277,7 +278,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package="esr-disc-patcher-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}"
+          package="${RELEASE_BASENAME}-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}"
           root="dist/$package"
           mkdir -p "$root"
           install -m 0755 \
@@ -293,7 +294,7 @@ jobs:
         with:
           name: package-${{ matrix.id }}
           path: >-
-            dist/esr-disc-patcher-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}.${{ matrix.extension }}
+            dist/${{ env.RELEASE_BASENAME }}-${{ needs.preflight.outputs.tag }}-${{ matrix.id }}.${{ matrix.extension }}
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -320,7 +321,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_root="esr-disc-patcher-${{ needs.preflight.outputs.tag }}"
+          source_root="${RELEASE_BASENAME}-${{ needs.preflight.outputs.tag }}"
           git archive --format=tar --prefix="${source_root}/" HEAD |
             gzip -n > "dist/${source_root}-source.tar.gz"
       - name: Verify archive contents and create checksums
@@ -335,7 +336,7 @@ jobs:
             local id="$1"
             local extension="$2"
             local executable="$3"
-            local package="esr-disc-patcher-${tag}-${id}"
+            local package="${RELEASE_BASENAME}-${tag}-${id}"
             local archive="dist/${package}.${extension}"
             local destination="${verify_root}/${id}"
             mkdir -p "$destination"
@@ -362,8 +363,8 @@ jobs:
           verify_binary_archive macos-x86_64 tar.gz esr-disc-patcher
           verify_binary_archive macos-aarch64 tar.gz esr-disc-patcher
 
-          source_archive="dist/esr-disc-patcher-${tag}-source.tar.gz"
-          source_root="esr-disc-patcher-${tag}"
+          source_archive="dist/${RELEASE_BASENAME}-${tag}-source.tar.gz"
+          source_root="${RELEASE_BASENAME}-${tag}"
           tar -tzf "$source_archive" > "${verify_root}/source-contents.txt"
           for required in Cargo.lock LICENSE THIRD_PARTY_NOTICES.md \
             assets/dvd_video_data.bin src/main.rs; do

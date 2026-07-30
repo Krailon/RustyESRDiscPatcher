@@ -200,7 +200,8 @@ fn help_version_and_usage_use_clap_exit_behavior() {
 
     let version = run(["--version"]);
     assert_success(&version);
-    assert!(String::from_utf8_lossy(&version.stdout).starts_with("esr-disc-patcher 0.1.0"));
+    let expected_version = format!("esr-disc-patcher {}", env!("CARGO_PKG_VERSION"));
+    assert!(String::from_utf8_lossy(&version.stdout).starts_with(&expected_version));
     assert!(version.stderr.is_empty());
 
     let usage = run(std::iter::empty::<&str>());
